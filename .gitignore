@@ -8,3 +8,5 @@ VENV-group-server/
 db\.sqlite3
 
 global_server/__pycache__/
+
+server_keys\.pem
