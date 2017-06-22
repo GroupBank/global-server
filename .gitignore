@@ -4,3 +4,7 @@ ENV/
 \.idea/
 
 VENV-group-server/
+
+db\.sqlite3
+
+global_server/__pycache__/
