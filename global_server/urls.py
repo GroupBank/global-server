@@ -16,6 +16,9 @@ Including another URLconf
 from django.conf.urls import url
 from django.contrib import admin
 
+from group_servers_app import views as group_servers_views
+
 urlpatterns = [
     url(r'^admin/', admin.site.urls),
+    url(r'^echo/', group_servers_views.echo_group),
 ]
