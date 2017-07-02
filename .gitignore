@@ -3,8 +3,6 @@ ENV/
 
 \.idea/
 
-VENV-group-server/
-
 db\.sqlite3
 
 global_server/__pycache__/
@@ -12,3 +10,5 @@ global_server/__pycache__/
 server_keys\.pem
 
 group_servers_app/__pycache__/
+
+venv-global-server/

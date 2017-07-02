@@ -21,4 +21,5 @@ from group_servers_app import views as group_servers_views
 urlpatterns = [
     url(r'^admin/', admin.site.urls),
     url(r'^echo/', group_servers_views.echo_group),
+    url(r'^register-group/', group_servers_views.register_group),
 ]
