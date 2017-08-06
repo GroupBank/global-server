@@ -12,3 +12,5 @@ server_keys\.pem
 group_servers_app/__pycache__/
 
 venv-global-server/
+
+\.cache/

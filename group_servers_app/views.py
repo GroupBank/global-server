@@ -13,7 +13,7 @@ def echo_group(request):
 @require_POST
 def register_group(request):
     try:
-        data = json.loads(request.POST['blob'])
+        data = json.loads(request.POST['data'])
     except json.JSONDecodeError:
         return HttpResponseBadRequest()
 
@@ -21,16 +21,17 @@ def register_group(request):
         group_name = data['group_name']
         group_key = data['group_key']
     except KeyError:
-        return HttpResponseBadRequest  # Missing attributes
+        return HttpResponseBadRequest()  # Missing attributes
 
     if group_key != request.POST['author']:
-        return HttpResponseBadRequest  #
+        return HttpResponseBadRequest()  # No author key
 
     # create the group in the DB
     # TODO: limit the length of the group name?
     group = Group.objects.create(name=group_name, key=group_key)
 
     # response will be signed by Django middleware
-    return HttpResponse(json.dumps({'group_uuid': group.uuid,
+    return HttpResponse(json.dumps({'group_uuid': str(group.uuid),
                                     'group_name': group.name,
-                                    'group_key': group.key}))
+                                    'group_key': group.key}),
+                        status=201)

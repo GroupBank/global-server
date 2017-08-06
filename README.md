@@ -1,17 +1,21 @@
 # Cloning the project
 
-pip freeze > requirements.txt
+1. `sudo apt install python3-venv`
+1. `python3 -m venv venv-global-server`
+1. `source venv-global-server/bin/activate`
+1. `pip install -r requirements.txt`
 
-sudo apt install python3-venv
-python3 -m venv venv-group-server
-source venv-group-server/bin/activate
-pip install -r requirements.txt
-python manage.py runserver 8080
+# Running the tests
+
+`pytest`
 
 # Running the server
 
-0. `python3 manage.py makemigrations main_server_app` (if the models were changed)
-1. `python3 manage.py sqlmigrate main_server_app 0001`
-2. `python3 manage.py migrate`
-3. `python3 manage.py runserver`
+1. `python3 manage.py makemigrations app_name_app` (if the models were changed)
+1. `python3 manage.py sqlmigrate app_name_app 0001`
+1. `python3 manage.py migrate`
+1. `python3 manage.py runserver 8080`
 
+# Updating the requirements file
+
+`pip freeze > requirements.txt`
