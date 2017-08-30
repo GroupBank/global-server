@@ -29,7 +29,7 @@ class RegisterGroupTests(TestCase):
         payload = json.dumps({'group_name': group_name, 'group_key': pub_key})
         signature = sign(priv_key, payload)
 
-        raw_response = self.client.post(reverse('group-servers:register-group'),
+        raw_response = self.client.post(reverse('rest:group:register'),
                                         {'author': id,
                                          'signature': signature,
                                          'payload': payload,

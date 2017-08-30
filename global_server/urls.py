@@ -18,5 +18,5 @@ from django.contrib import admin
 
 urlpatterns = [
     url(r'^admin/', admin.site.urls),
-    url(r'^group-servers/', include('group_servers_app.urls')),
+    url(r'^rest/', include('rest_app.urls')),
 ]

@@ -1,3 +1,4 @@
+from django.core.exceptions import ObjectDoesNotExist
 from django.http import HttpResponse, HttpResponseBadRequest
 from django.views.decorators.http import require_POST, require_GET
 
@@ -9,13 +10,8 @@ from .models import Group
 logger = logging.getLogger(__name__)
 
 
-@require_GET
-def echo_group(request):
-    return HttpResponse(request.GET['group_name'])
-
-
 @require_POST
-def register_group(request):
+def register(request):
     try:
         author = request.POST['author']
         payload = json.loads(request.POST['payload'])
