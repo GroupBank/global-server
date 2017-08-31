@@ -6,10 +6,12 @@ import json
 import logging
 
 from .models import Group
+from common.decorators import verify_author
 
 logger = logging.getLogger(__name__)
 
 
+@verify_author
 @require_POST
 def register(request):
     try:
