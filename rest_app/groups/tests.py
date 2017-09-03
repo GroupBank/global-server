@@ -8,7 +8,10 @@ import json
 import pytest
 
 from common.crypto import example_keys
-from common.crypto.rsa import sign, verify
+import common.crypto.rsa as crypto
+from rest_app.models import Group, User
+
+_, server_key = crypto.load_keys('server_keys.pem')
 
 # Good rules-of-thumb include having:
 #
@@ -21,24 +24,51 @@ from common.crypto.rsa import sign, verify
 class RegisterGroupTests(TestCase):
     # TODO: add proxy/name server address?
     # TODO: Avoid testing the signature verification middleware. https://stackoverflow.com/questions/18025367/disable-a-specific-django-middleware-during-tests
-    def test_correct_inputs_no_signing(self):
+    def test_correct_inputs(self):
         group_name = 'test_name'
         priv_key, pub_key = example_keys.G1_priv, example_keys.G1_pub
         id = pub_key
 
         payload = json.dumps({'group_name': group_name, 'group_key': pub_key})
-        signature = sign(priv_key, payload)
+        signature = crypto.sign(priv_key, payload)
 
-        raw_response = self.client.post(reverse('rest:group:register'),
-                                        {'author': id,
+        response = self.client.post(reverse('rest:group:register'),
+                                            {'author': id,
+                                             'signature': signature,
+                                             'payload': payload})
+
+        assert response.status_code == 201
+        assert response['author'] == server_key
+        crypto.verify(server_key, response['signature'], response.content.decode())
+
+        payload = json.loads(response.content.decode())
+
+        assert payload['group_name'] == group_name
+        assert payload['group_key'] == pub_key
+        UUID(payload['group_uuid'])
+
+
+class RegisterUserTests(TestCase):
+    def setUp(self):
+        self.group = Group.objects.create(name='test', key=example_keys.G1_pub)
+
+    def test_new_user_to_existing_group(self):
+        user_priv, user_pub = example_keys.C1_priv, example_keys.C1_pub
+        group_priv, group_pub = example_keys.G1_priv, example_keys.G1_pub
+
+        payload = json.dumps({'user_key': user_pub, 'group_uuid': str(self.group.uuid)})
+        signature = crypto.sign(group_priv, payload)
+
+        response = self.client.post(reverse('rest:group:register-user'),
+                                        {'author': group_pub,
                                          'signature': signature,
-                                         'payload': payload,
-                                         })
+                                         'payload': payload})
 
-        assert raw_response.status_code == 201
+        assert response.status_code == 201
+        assert response['author'] == server_key
+        crypto.verify(server_key, response['signature'], response.content.decode())
 
-        response = json.loads(raw_response.content.decode())
+        payload = json.loads(response.content.decode())
 
-        assert response['group_name'] == group_name
-        assert response['group_key'] == pub_key
-        UUID(response['group_uuid'])
+        assert payload['group_uuid'] == str(self.group.uuid)
+        assert payload['user'] == user_pub
