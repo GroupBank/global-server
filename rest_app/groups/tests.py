@@ -47,6 +47,40 @@ class RegisterGroupTests(TestCase):
         assert payload['group_key'] == pub_key
         UUID(payload['group_uuid'])
 
+    def test_invalid_message(self):
+        group_name = 'test_name'
+        priv_key, pub_key = example_keys.G1_priv, example_keys.G1_pub
+
+        payload = json.dumps({'group_name': group_name})  # missing 'group_key' field
+        signature = crypto.sign(priv_key, payload)
+
+        response = self.client.post(reverse('rest:group:register'),
+                                    {'author': pub_key,
+                                     'signature': signature,
+                                     'payload': payload})
+
+        assert response.status_code == 400
+        assert response['author'] == server_key
+        crypto.verify(server_key, response['signature'], response.content.decode())
+
+    def test_invalid_signature(self):
+        group_name = 'test_name'
+        priv_key, pub_key = example_keys.G1_priv, example_keys.G1_pub
+
+        sent_payload = json.dumps({'group_name': group_name, 'group_key': pub_key})
+
+        signed_payload = json.dumps({'group_name': group_name})  # missing 'group_key' field
+        signature = crypto.sign(example_keys.G1_priv, signed_payload)
+
+        response = self.client.post(reverse('rest:group:register'),
+                                    {'author': id,
+                                     'signature': signature,
+                                     'payload': sent_payload})
+
+        assert response.status_code == 403
+        assert response['author'] == server_key
+        crypto.verify(server_key, response['signature'], response.content.decode())
+
 
 class RegisterUserTests(TestCase):
     def setUp(self):
@@ -78,7 +112,6 @@ class RegisterUserTests(TestCase):
         group_priv, group_pub = example_keys.G1_priv, example_keys.G1_pub
 
         payload = json.dumps({'user_key': user_pub, 'group_uuid': 'random_uuid'})
-
         signature = crypto.sign(group_priv, payload)
 
         response = self.client.post(reverse('rest:group:register-user'),
@@ -98,7 +131,6 @@ class RegisterUserTests(TestCase):
         group_uuid = str(uuid4())
 
         payload = json.dumps({'user_key': user_pub, 'group_uuid': group_uuid})
-
         signature = crypto.sign(group_priv, payload)
 
         response = self.client.post(reverse('rest:group:register-user'),
