@@ -1,7 +1,7 @@
 import json
 import logging
 
-from django.core.exceptions import ObjectDoesNotExist
+from django.core.exceptions import ObjectDoesNotExist, ValidationError
 from django.http import HttpResponse, HttpResponseBadRequest
 from django.views.decorators.http import require_POST
 
@@ -69,7 +69,7 @@ def register_user(request):
 
     try:  # check that the group exists and get it
         group = Group.objects.get(pk=group_uuid)
-    except (ValueError, ObjectDoesNotExist):  # ValueError if the uuid is not valid
+    except (ValidationError, ObjectDoesNotExist):  # ValueError if the uuid is not valid
         logger.info('Request tried to create user for non-existent group %s' % group_uuid)
         return HttpResponseBadRequest()
 

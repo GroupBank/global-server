@@ -1,4 +1,4 @@
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from django.test import TestCase
 from django.urls import reverse
@@ -72,3 +72,42 @@ class RegisterUserTests(TestCase):
 
         assert payload['group_uuid'] == str(self.group.uuid)
         assert payload['user'] == user_pub
+
+    def test_new_user_invalid_group_uuid(self):
+        user_priv, user_pub = example_keys.C1_priv, example_keys.C1_pub
+        group_priv, group_pub = example_keys.G1_priv, example_keys.G1_pub
+
+        payload = json.dumps({'user_key': user_pub, 'group_uuid': 'random_uuid'})
+
+        signature = crypto.sign(group_priv, payload)
+
+        response = self.client.post(reverse('rest:group:register-user'),
+                                    {'author': group_pub,
+                                     'signature': signature,
+                                     'payload': payload})
+
+        assert response.status_code == 400
+
+        assert response['author'] == server_key
+        crypto.verify(server_key, response['signature'], response.content.decode())
+
+    def test_new_user_non_existent_group(self):
+        user_priv, user_pub = example_keys.C1_priv, example_keys.C1_pub
+        group_priv, group_pub = example_keys.G2_priv, example_keys.G2_pub
+
+        group_uuid = str(uuid4())
+
+        payload = json.dumps({'user_key': user_pub, 'group_uuid': group_uuid})
+
+        signature = crypto.sign(group_priv, payload)
+
+        response = self.client.post(reverse('rest:group:register-user'),
+                                    {'author': group_pub,
+                                     'signature': signature,
+                                     'payload': payload})
+
+        assert response.status_code == 400
+
+        assert response['author'] == server_key
+        crypto.verify(server_key, response['signature'], response.content.decode())
+
