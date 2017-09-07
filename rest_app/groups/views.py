@@ -23,8 +23,6 @@ def register(request):
         logger.info('Malformed request')
         return HttpResponseBadRequest()
 
-    author = request.POST['author']
-
     try:
         group_name = payload['group_name']
         group_key = payload['group_key']
@@ -32,7 +30,7 @@ def register(request):
         logger.info('Request with missing attributes')
         return HttpResponseBadRequest()
 
-    if group_key != author:
+    if group_key != request.POST['author']:
         logger.info('Request author not authorized')
         return HttpResponseBadRequest()
 
@@ -69,7 +67,7 @@ def register_user(request):
 
     try:  # check that the group exists and get it
         group = Group.objects.get(pk=group_uuid)
-    except (ValidationError, ObjectDoesNotExist):  # ValueError if the uuid is not valid
+    except (ValidationError, ObjectDoesNotExist):  # ValidationError if key is not valid
         logger.info('Request tried to create user for non-existent group %s' % group_uuid)
         return HttpResponseBadRequest()
 
