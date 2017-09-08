@@ -107,3 +107,56 @@ class ConfirmUOMeTests(TestCase):
 
         uome = UOMe.objects.get(pk=uome.uuid)
         assert uome.issuer_signature == uome_signature
+
+
+class CancelUOMeTests(TestCase):
+    def setUp(self):
+        self.private_key, self.key = example_keys.C1_priv, example_keys.C1_pub
+        self.group = Group.objects.create(name='test', key=example_keys.G1_pub)
+        self.user = User.objects.create(group=self.group, key=self.key)
+        self.borrower = User.objects.create(group=self.group, key=example_keys.C2_pub)
+
+    def test_cancel_unconfirmed_uome(self):
+        uome = UOMe.objects.create(group=self.group, lender=self.user,
+                                   borrower=self.borrower,
+                                   value=10,
+                                   description='test')
+
+        issuer_payload = json.dumps({'group_uuid': str(self.group.uuid),
+                                     'issuer': self.user.key,
+                                     'borrower': self.borrower.key,
+                                     'value': 10,
+                                     'description': 'test',
+                                     'uome_uuid': str(uome.uuid),
+                                     })
+
+        issuer_signature = crypto.sign(self.private_key, issuer_payload)
+
+        uome.issuer_signature = issuer_signature
+        uome.save()
+
+        payload = json.dumps({'group_uuid': str(self.group.uuid),
+                              'user': self.user.key,
+                              'uome_uuid': str(uome.uuid),
+                              })
+        signature = crypto.sign(self.private_key, payload)
+
+        response = self.client.post(reverse('rest:uome:cancel'),
+                                    {'author': self.user.key,
+                                     'signature': signature,
+                                     'payload': payload})
+
+        assert response.status_code == 200
+        assert response['author'] == server_key
+        crypto.verify(server_key, response['signature'], response.content.decode())
+
+        payload = json.loads(response.content.decode())
+
+        assert payload['group_uuid'] == str(self.group.uuid)
+        assert payload['user'] == self.user.key
+        assert payload['uome_uuid'] == str(uome.uuid)
+
+        assert UOMe.objects.filter(uuid=uome.uuid).first() is None
+
+        # TODO: test for the other cases: uome doesn't exist, the user isn't the
+        # issuer of the uome or the uome has already been confirmed
