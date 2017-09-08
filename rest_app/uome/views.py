@@ -5,6 +5,7 @@ from django.core.exceptions import ObjectDoesNotExist, ValidationError
 from django.http import HttpResponse, HttpResponseBadRequest, HttpResponseForbidden
 from django.views.decorators.http import require_POST
 
+from common.crypto import rsa as crypto
 from common.decorators import verify_author
 from rest_app.models import Group, User, UOMe, UOME_DESCRIPTION_MAX_LENGTH
 
@@ -25,25 +26,34 @@ def issue(request):
 
     try:
         group_uuid = payload['group_uuid']
-        user = payload['user']
-        borrower = payload['borrower']
+        user_id = payload['user']
+        borrower_id = payload['borrower']
         value = payload['value']
         description = payload['description']
+        auth_signature = payload['user_signature']
     except KeyError:
         logger.info('Request with missing attributes')
         return HttpResponseBadRequest()
 
-    if request.POST['author'] != user:
+    if request.POST['author'] != user_id:
         logger.info('Request made by unauthorized author %s' % request.POST['author'])
         return HttpResponse('401 Unauthorized', status=401)
 
+    auth_payload = json.dumps({'group_uuid': str(group_uuid), 'user': user_id})
+
+    try:
+        crypto.verify(user_id, auth_signature, auth_payload)
+    except (crypto.InvalidKey, crypto.InvalidSignature):
+        logger.info('Request with invalid signature or key by author %s' % user_id)
+        return HttpResponseForbidden()
+
     try:  # check that the group exists and get it
         group = Group.objects.get(pk=group_uuid)
-        user = User.objects.get(group=group, key=user)
-        borrower = User.objects.get(group=group, key=borrower)
+        user = User.objects.get(group=group, key=user_id)
+        borrower = User.objects.get(group=group, key=borrower_id)
     except (ValidationError, ObjectDoesNotExist):  # ValidationError if key is not valid
         logger.info('Request tried to issue uome for non-existent group %s'
-                    ', user %s or borrower %s' % (group_uuid, user, borrower))
+                    ', user %s or borrower %s' % (group_uuid, user_id, borrower_id))
         return HttpResponseBadRequest()
 
     if value <= 0:  # So it's not possible to invert the direction of the UOMe
@@ -69,5 +79,63 @@ def issue(request):
                            'description': description,
                            'uome_uuid': str(uome.uuid)})
 
-    # logger.info('New user %s has been registered to group %s' % (user_key, group_uuid))
+    logger.info('New uome %s issued in group %s by user %s' % (uome.uuid, group_uuid, user_id))
     return HttpResponse(response, status=201)
+
+
+@verify_author
+@require_POST
+def confirm(request):
+    """
+    Used by a user to confirm an unconfirmed UOMe after the server assigns it an uuid
+    """
+    try:
+        payload = json.loads(request.POST['payload'])
+    except json.JSONDecodeError:
+        logger.info('Malformed request')
+        return HttpResponseBadRequest()
+
+    try:
+        group_uuid = payload['group_uuid']
+        user_id = payload['user']
+        uome_uuid = payload['uome_uuid']
+        user_signature = payload['user_signature']
+    except KeyError:
+        logger.info('Request with missing attributes')
+        return HttpResponseBadRequest()
+
+    if request.POST['author'] != user_id:
+        logger.info('Request made by unauthorized author %s' % request.POST['author'])
+        return HttpResponse('401 Unauthorized', status=401)
+
+    try:  # check that the group exists and get it
+        group = Group.objects.get(pk=group_uuid)
+        user = User.objects.get(group=group, key=user_id)
+        uome = UOMe.objects.get(pk=uome_uuid)
+    except (ValidationError, ObjectDoesNotExist):  # ValidationError if key not valid
+        return HttpResponseBadRequest()
+
+    payload_to_sign = json.dumps({
+        'group_uuid': str(uome.group.uuid),
+        'user': uome.lender.key,
+        'borrower': uome.borrower.key,
+        'value': uome.value,
+        'description': uome.description,
+        'uome_uuid': str(uome.uuid),
+    })
+
+    try:
+        crypto.verify(user_id, user_signature, payload_to_sign)
+    except (crypto.InvalidKey, crypto.InvalidSignature):
+        logger.info('Request with invalid signature or key by author %s' % user_id)
+        return HttpResponseForbidden()
+
+    # TODO: the description can leak information, maybe it should be encrypted
+    uome.issuer_signature = payload['user_signature']
+    uome.save()
+
+    # user created, create the response object
+    response = json.dumps({'group_uuid': str(group.uuid), 'user': user.key})
+
+    logger.info('New uome %s confirmed in group %s by user %s' % (uome.uuid, group_uuid, user_id))
+    return HttpResponse(response, status=200)
