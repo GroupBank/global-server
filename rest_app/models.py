@@ -56,12 +56,18 @@ class UOMe(models.Model):
         return "%.3f€ from %s to %s: %s" % (
         int(self.value) / 100, self.borrower, self.lender, self.description)
 
-    def to_array_unconfirmed(self) -> tuple:
+    def to_dict_unconfirmed(self) -> dict:
         """
-        Returns an array/tuple of the relevant information of the UOMe without
+        Returns a dictionary of the relevant information of the UOMe without
          the borrower signature
         :return tuple:
         """
-        return (str(self.group.uuid), self.lender.key, self.borrower.key, self.value,
-                self.description, self.issuer_signature, str(self.uuid))
+        return {'group_uuid': str(self.group.uuid),
+                'lender': self.lender.key,
+                'borrower': self.borrower.key,
+                'value': self.value,
+                'description': self.description,
+                'uuid': str(self.uuid),
+                'issuer_signature': self.issuer_signature,
+                }
 

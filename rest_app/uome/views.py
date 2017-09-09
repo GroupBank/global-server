@@ -189,3 +189,67 @@ def cancel(request):
         return HttpResponse(response, status=200)
     else:
         return HttpResponseForbidden()
+
+
+@verify_author
+@require_POST
+def get_pending(request):
+    """
+    Used by a user to request a list of pending (not yet accepted) UOMes issued to/by them
+    """
+    try:
+        payload = json.loads(request.POST['payload'])
+    except json.JSONDecodeError:
+        logger.info('Malformed request')
+        return HttpResponseBadRequest()
+
+    try:
+        group_uuid = payload['group_uuid']
+        user_id = payload['user']
+        auth_signature = payload['user_signature']
+    except KeyError:
+        logger.info('Request with missing attributes')
+        return HttpResponseBadRequest()
+
+    if request.POST['author'] != user_id:
+        logger.info('Request made by unauthorized author %s' % request.POST['author'])
+        return HttpResponse('401 Unauthorized', status=401)
+
+    try:  # check that the group exists and get it
+        group = Group.objects.get(pk=group_uuid)
+        user = User.objects.get(group=group, key=user_id)
+    except (ValidationError, ObjectDoesNotExist):  # ValidationError if the key is invalid
+        logger.info('Request tried access pending uomes for non-existent group %s'
+                    ', user %s' % (group_uuid, user_id))
+        return HttpResponseBadRequest()
+
+    auth_payload = json.dumps({'group_uuid': str(group.uuid),
+                               'user': user.key,
+                               })
+
+    try:  # verify the signatures
+        crypto.verify(user.key, auth_signature, auth_payload)
+    except (crypto.InvalidKey, crypto.InvalidSignature):
+        logger.info('Request with invalid signature or key by author %s' % user_id)
+        return HttpResponseForbidden()
+
+    # TODO: add a test for uome's without issuer signatures
+    uomes_by_user = UOMe.objects.filter(group=group, borrower_signature='',
+                                        lender=user).exclude(issuer_signature='')
+    uomes_for_user = UOMe.objects.filter(group=group, borrower_signature='',
+                                         borrower=user).exclude(issuer_signature='')
+    issued_by_user = []
+    for uome in uomes_by_user:
+        issued_by_user.append(uome.to_dict_unconfirmed())
+    waiting_for_user = []
+    for uome in uomes_for_user:
+        waiting_for_user.append(uome.to_dict_unconfirmed())
+
+    response = json.dumps({'group_uuid': str(group.uuid),
+                           'user': user.key,
+                           'issued_by_user': json.dumps(issued_by_user),
+                           'waiting_for_user': json.dumps(waiting_for_user),
+                           })
+
+    logger.info('Sent pending uome list to user %s' % user_id)
+    return HttpResponse(response, status=200)
