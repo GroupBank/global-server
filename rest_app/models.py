@@ -71,3 +71,15 @@ class UOMe(models.Model):
                 'issuer_signature': self.issuer_signature,
                 }
 
+
+class UserDebt(models.Model):
+    # the debt between users after simplification
+    group = models.ForeignKey(Group, on_delete=models.CASCADE)
+
+    borrower = models.ForeignKey(User, on_delete=models.PROTECT, related_name='debt_borrower')
+    lender = models.ForeignKey(User, on_delete=models.PROTECT, related_name='debt_lender')
+
+    value = models.PositiveIntegerField()  # In cents!
+
+    def __str__(self):
+        return "%.3f€ from %s to %s" % (int(self.value)/100, self.borrower, self.lender)

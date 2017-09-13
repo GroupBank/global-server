@@ -1,11 +1,12 @@
 import json
 
+from collections import defaultdict
 from django.test import TestCase
 from django.urls import reverse
 
 import common.crypto.rsa as crypto
 from common.crypto import example_keys
-from rest_app.models import Group, User, UOMe
+from rest_app.models import Group, User, UOMe, UserDebt
 
 _, server_key = crypto.load_keys('server_keys.pem')
 
@@ -251,3 +252,81 @@ class GetPendingUOMesTests(TestCase):
             assert uome['description'] == uome_for_user.description
             assert uome['uuid'] == str(uome_for_user.uuid)
             assert uome['issuer_signature'] == uome_for_user_signature
+
+
+class AcceptTests(TestCase):
+    def setUp(self):
+        self.private_key, self.key = example_keys.C1_priv, example_keys.C1_pub
+        self.group = Group.objects.create(name='test', key=example_keys.G1_pub)
+        self.user = User.objects.create(group=self.group, key=self.key)
+        self.lender = User.objects.create(group=self.group, key=example_keys.C2_pub)
+
+    def test_confirm_first_uome(self):
+
+        uome = UOMe.objects.create(group=self.group,
+                                   lender=self.lender,
+                                   borrower=self.user,
+                                   value=10,
+                                   description='test',
+                                   )
+
+        issuer_payload = json.dumps({'group_uuid': str(self.group.uuid),
+                                     'issuer': self.lender.key,
+                                     'borrower': self.user.key,
+                                     'value': 10,
+                                     'description': 'test',
+                                     'uome_uuid': str(uome.uuid),
+                                     })
+        issuer_signature = crypto.sign(example_keys.C2_priv, issuer_payload)
+
+        uome.issuer_signature = issuer_signature
+        uome.save()
+
+        assert uome.borrower_signature == ''
+
+        borrower_payload = json.dumps({'group_uuid': str(self.group.uuid),
+                                       'issuer': self.lender.key,
+                                       'borrower': self.user.key,
+                                       'value': 10,
+                                       'description': 'test',
+                                       'uome_uuid': str(uome.uuid),
+                                       })
+        borrower_signature = crypto.sign(self.private_key, borrower_payload)
+
+        payload = json.dumps({'group_uuid': str(self.group.uuid),
+                              'user': self.user.key,
+                              'uome_uuid': str(uome.uuid),
+                              'user_signature': borrower_signature,
+                              })
+        signature = crypto.sign(self.private_key, payload)
+
+        response = self.client.post(reverse('rest:uome:accept'),
+                                    {'author': self.user.key,
+                                     'signature': signature,
+                                     'payload': payload})
+
+        assert response.status_code == 200
+        assert response['author'] == server_key
+        crypto.verify(server_key, response['signature'], response.content.decode())
+
+        payload = json.loads(response.content.decode())
+
+        assert payload['group_uuid'] == str(self.group.uuid)
+        assert payload['user'] == self.user.key
+
+        uome = UOMe.objects.filter(group=self.group, uuid=uome.uuid).first()
+        assert uome.borrower_signature == borrower_signature
+
+        # Confirm totals
+        totals = {}
+        for user in User.objects.filter(group=self.group):
+            totals[user] = user.balance
+
+        assert totals == {self.user: -uome.value, self.lender: uome.value}
+
+        # Confirm simplified debt
+        simplified_debt = defaultdict(dict)
+        for user_debt in UserDebt.objects.filter(group=self.group):
+            simplified_debt[user_debt.borrower][user_debt.lender] = user_debt.value
+
+        assert simplified_debt == {self.user: {self.lender: uome.value}}

@@ -1,13 +1,16 @@
 import json
 import logging
 
+from collections import defaultdict
 from django.core.exceptions import ObjectDoesNotExist, ValidationError
+from django.db import transaction
 from django.http import HttpResponse, HttpResponseBadRequest, HttpResponseForbidden
 from django.views.decorators.http import require_POST
 
 from common.crypto import rsa as crypto
 from common.decorators import verify_author
-from rest_app.models import Group, User, UOMe, UOME_DESCRIPTION_MAX_LENGTH
+from rest_app.models import Group, User, UOMe, UOME_DESCRIPTION_MAX_LENGTH, UserDebt
+from rest_app.utils import simplify_debt
 
 logger = logging.getLogger(__name__)
 
@@ -219,7 +222,7 @@ def get_pending(request):
         group = Group.objects.get(pk=group_uuid)
         user = User.objects.get(group=group, key=user_id)
     except (ValidationError, ObjectDoesNotExist):  # ValidationError if the key is invalid
-        logger.info('Request tried access pending uomes for non-existent group %s'
+        logger.info('Request tried accessing pending uomes for non-existent group %s'
                     ', user %s' % (group_uuid, user_id))
         return HttpResponseBadRequest()
 
@@ -252,4 +255,89 @@ def get_pending(request):
                            })
 
     logger.info('Sent pending uome list to user %s' % user_id)
+    return HttpResponse(response, status=200)
+
+
+# TODO: Think about data races a lot more
+@transaction.atomic
+@require_POST
+def accept(request):
+    """
+       Used by a user to accept a pending UOMe issued to them
+       """
+    try:
+        payload = json.loads(request.POST['payload'])
+    except json.JSONDecodeError:
+        logger.info('Malformed request')
+        return HttpResponseBadRequest()
+
+    try:
+        group_uuid = payload['group_uuid']
+        user_id = payload['user']
+        uome_uuid = payload['uome_uuid']
+        uome_signature = payload['user_signature']
+    except KeyError:
+        logger.info('Request with missing attributes')
+        return HttpResponseBadRequest()
+
+    try:  # check that the group exists and get it
+        group = Group.objects.get(pk=group_uuid)
+        user = User.objects.get(group=group, key=user_id)
+        uome = UOMe.objects.get(group=group, uuid=uome_uuid)
+    except (ValidationError, ObjectDoesNotExist):  # ValidationError if the key is invalid
+        logger.info('Request tried accepting a uomes for non-existent group %s'
+                    ', user %s or uome %s' % (group_uuid, user_id, uome_uuid))
+        return HttpResponseBadRequest()
+
+    if request.POST['author'] != user_id or request.POST['author'] != uome.borrower.key:
+        logger.info('Request made by unauthorized author %s' % request.POST['author'])
+        return HttpResponse('401 Unauthorized', status=401)
+
+    uome_payload = json.dumps({'group_uuid': str(uome.group.uuid),
+                               'issuer': uome.lender.key,
+                               'borrower': uome.borrower.key,
+                               'value': uome.value,
+                               'description': uome.description,
+                               'uome_uuid': str(uome.uuid),
+                               })
+
+    try:  # verify the signatures
+        crypto.verify(user.key, uome_signature, uome_payload)
+    except (crypto.InvalidKey, crypto.InvalidSignature):
+        logger.info('Request with invalid signature or key by author %s' % user_id)
+        return HttpResponseForbidden()
+
+    uome.borrower_signature = uome_signature
+    uome.save()
+
+    # update the balances and suggestions of users
+    group_users = User.objects.filter(group=group)
+
+    totals = defaultdict(int)
+    for group_user in group_users:
+        totals[group_user.key] = group_user.balance
+
+    new_uome = [uome.borrower.key, uome.lender.key, uome.value]
+    new_totals, new_simplified_debt = simplify_debt.update_total_debt(totals, [new_uome])
+
+    for group_user in group_users:
+        group_user.balance = new_totals[group_user.key]
+        group_user.save()
+
+    # drop the previous user debt for this group, since it's now useless
+    UserDebt.objects.filter(group=group).delete()
+
+    for borrower, user_debts in new_simplified_debt.items():
+        # debts is a dict of users this borrower owes to, like {'user1': 3, 'user2':8}
+        for lender, value in user_debts.items():
+            UserDebt.objects.create(group=group, value=value,
+                                    borrower=User.objects.get(key=borrower),
+                                    lender=User.objects.get(key=lender))
+
+    response = json.dumps({'group_uuid': str(uome.group.uuid),
+                           'user': user.key,
+                           'uome_uuid': str(uome.uuid),
+                           })
+
+    logger.info('UOMe %s was accepted by user %s' % (str(uome_uuid), user_id))
     return HttpResponse(response, status=200)
