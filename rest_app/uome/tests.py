@@ -330,3 +330,79 @@ class AcceptTests(TestCase):
             simplified_debt[user_debt.borrower][user_debt.lender] = user_debt.value
 
         assert simplified_debt == {self.user: {self.lender: uome.value}}
+
+
+class GetTotalsTests(TestCase):
+    def setUp(self):
+        self.private_key, self.key = example_keys.C1_priv, example_keys.C1_pub
+        self.group = Group.objects.create(name='test', key=example_keys.G1_pub)
+        self.user1 = User.objects.create(group=self.group, key=example_keys.C1_pub)
+        self.user2 = User.objects.create(group=self.group, key=example_keys.C2_pub)
+        self.user3 = User.objects.create(group=self.group, key=example_keys.C3_pub)
+
+        self.user_payload = json.dumps({'group_uuid': str(self.group.uuid),
+                                        'user': self.user1.key,
+                                        })
+        self.user_signature = crypto.sign(self.private_key, self.user_payload)
+
+        self.payload = json.dumps({'group_uuid': str(self.group.uuid),
+                                   'user': self.user1.key,
+                                   'user_signature': self.user_signature,
+                                   })
+        self.signature = crypto.sign(self.private_key, self.payload)
+
+    def test_get_totals_no_uome(self):
+        response = self.client.post(reverse('rest:uome:get-totals'),
+                                    {'author': self.key,
+                                     'signature': self.signature,
+                                     'payload': self.payload})
+
+        assert response.status_code == 200
+        assert response['author'] == server_key
+        crypto.verify(server_key, response['signature'], response.content.decode())
+
+        payload = json.loads(response.content.decode())
+
+        assert payload['user_balance'] == 0
+        assert payload['suggested_transactions'] == {}
+
+    def test_get_totals_one_unconfirmed_uome(self):
+        UOMe.objects.create(group=self.group, lender=self.user2, borrower=self.user1,
+                            value=10, description="test", issuer_signature='meh')
+
+        response = self.client.post(reverse('rest:uome:get-totals'),
+                                    {'author': self.key,
+                                     'signature': self.signature,
+                                     'payload': self.payload})
+
+        assert response.status_code == 200
+        assert response['author'] == server_key
+        crypto.verify(server_key, response['signature'], response.content.decode())
+
+        payload = json.loads(response.content.decode())
+
+        assert payload['user_balance'] == 0
+        assert payload['suggested_transactions'] == {}
+
+    def test_get_totals_one_confirmed_uome(self):
+        uome = UserDebt.objects.create(group=self.group, lender=self.user2,
+                                       borrower=self.user1, value=1000)
+
+        self.user2.balance = +uome.value
+        self.user2.save()
+        self.user1.balance = -uome.value
+        self.user1.save()
+
+        response = self.client.post(reverse('rest:uome:get-totals'),
+                                    {'author': self.key,
+                                     'signature': self.signature,
+                                     'payload': self.payload})
+
+        assert response.status_code == 200
+        assert response['author'] == server_key
+        crypto.verify(server_key, response['signature'], response.content.decode())
+
+        payload = json.loads(response.content.decode())
+
+        assert payload['user_balance'] == -uome.value
+        assert payload['suggested_transactions'] == {self.user2.key: uome.value}

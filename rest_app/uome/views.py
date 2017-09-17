@@ -260,6 +260,7 @@ def get_pending(request):
 
 # TODO: Think about data races a lot more
 @transaction.atomic
+@verify_author
 @require_POST
 def accept(request):
     """
@@ -340,4 +341,65 @@ def accept(request):
                            })
 
     logger.info('UOMe %s was accepted by user %s' % (str(uome_uuid), user_id))
+    return HttpResponse(response, status=200)
+
+
+@verify_author
+@require_POST
+def get_totals(request):
+    """
+    Used by a user to check the totals of users in the group
+    """
+    try:
+        payload = json.loads(request.POST['payload'])
+    except json.JSONDecodeError:
+        logger.info('Malformed request')
+        return HttpResponseBadRequest()
+
+    try:
+        group_uuid = payload['group_uuid']
+        user_id = payload['user']
+        user_signature = payload['user_signature']
+    except KeyError:
+        logger.info('Request with missing attributes')
+        return HttpResponseBadRequest()
+
+    try:  # check that the group exists and get it
+        group = Group.objects.get(pk=group_uuid)
+        user = User.objects.get(group=group, key=user_id)
+    except (ValidationError, ObjectDoesNotExist):  # ValidationError if the key is invalid
+        logger.info('Request tried to get the totals for non-existent group %s'
+                    'or user %s' % (group_uuid, user_id))
+        return HttpResponseBadRequest()
+
+    user_payload = json.dumps({'group_uuid': str(group.uuid),
+                               'user': user.key,
+                               })
+
+    # todo: probably unnecessary because of the verify author decorator
+    try:  # verify the signatures
+        crypto.verify(user.key, user_signature, user_payload)
+    except (crypto.InvalidKey, crypto.InvalidSignature):
+        logger.info('Request with invalid signature or key by author %s' % user_id)
+        return HttpResponseForbidden()
+
+    # example: {'user1': val1, 'user2': val2}
+    suggested_transactions = {}
+
+    # todo: send the actual totals along with the suggested transactions
+    if user.balance < 0:  # filter by borrower
+        for debt in UserDebt.objects.filter(group=group, borrower=user):
+            suggested_transactions[debt.lender.key] = debt.value
+
+    elif user.balance > 0:  # filter by lender
+        for debt in UserDebt.objects.filter(group=group, lender=user):
+            suggested_transactions[debt.borrower.key] = debt.value
+
+    response = json.dumps({'group_uuid': str(group.uuid),
+                           'user': user.key,
+                           'user_balance': user.balance,
+                           'suggested_transactions': suggested_transactions,
+                           })
+
+    logger.info('Totals sent to user %s' % user_id)
     return HttpResponse(response, status=200)
