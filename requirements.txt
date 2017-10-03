@@ -1,6 +1,15 @@
+asn1crypto==0.22.0
+bitcoin==1.1.42
+cffi==1.10.0
 cryptography==2.0.3
 Django==1.11.2
+djangorestframework==3.6.4
+idna==2.6
 pkg-resources==0.0.0
+py==1.4.34
+pycparser==2.18
+pycryptodome==3.4.7
 pytest==3.2.0
 pytest-django==3.1.2
 pytz==2017.2
+six==1.10.0
