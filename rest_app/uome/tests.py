@@ -4,7 +4,7 @@ from collections import defaultdict
 from django.test import TestCase
 from django.urls import reverse
 
-import common.crypto.rsa as crypto
+import common.crypto.ec_secp256k1 as crypto
 from common.crypto import example_keys
 from rest_app.models import Group, User, UOMe, UserDebt
 

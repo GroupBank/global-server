@@ -8,7 +8,7 @@ import json
 import pytest
 
 from common.crypto import example_keys
-import common.crypto.rsa as crypto
+import common.crypto.ec_secp256k1 as crypto
 from rest_app.models import Group, User
 
 _, server_key = crypto.load_keys('server_keys.pem')
