@@ -1,7 +1,7 @@
 
 ENV/
 
-\.idea/
+.idea/
 
 db\.sqlite3
 
@@ -9,8 +9,9 @@ server_keys\.pem
 
 venv-global-server/
 
-\.cache/
+.cache/
 
 */__pycache__/
 
 *.pyc
+venv/
