@@ -1,7 +1,7 @@
 from django.db import models
 import uuid
 
-from common.crypto import ec_secp256k1 as crypto
+from groupbank_crypto import ec_secp256k1 as crypto
 
 UOME_DESCRIPTION_MAX_LENGTH = 1024
 

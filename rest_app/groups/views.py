@@ -5,7 +5,7 @@ from django.core.exceptions import ObjectDoesNotExist, ValidationError
 from django.http import HttpResponse, HttpResponseBadRequest
 from django.views.decorators.http import require_POST
 
-from common.decorators import verify_author
+from rest_app.decorators import verify_author
 from rest_app.models import Group, User
 
 logger = logging.getLogger(__name__)

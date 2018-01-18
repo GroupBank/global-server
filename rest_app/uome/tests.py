@@ -4,8 +4,8 @@ from collections import defaultdict
 from django.test import TestCase
 from django.urls import reverse
 
-import common.crypto.ec_secp256k1 as crypto
-from common.crypto import example_keys
+import groupbank_crypto.ec_secp256k1 as crypto
+from rest_app import example_keys
 from rest_app.models import Group, User, UOMe, UserDebt
 
 _, server_key = crypto.load_keys('server_keys.pem')

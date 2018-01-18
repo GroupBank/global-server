@@ -42,9 +42,9 @@ INSTALLED_APPS = [
 ]
 
 MIDDLEWARE = [
-    'common.middleware.SignResponseMiddleware',
-#    'common.middleware.VerifySignatureMiddleware',
-#    'common.django_middleware.VerifyAuthoriztion',
+    'rest_app.middleware.SignResponseMiddleware',
+#    'rest_app.middleware.VerifySignatureMiddleware',
+#    'rest_app.middleware.VerifyAuthoriztion',
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',

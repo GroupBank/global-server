@@ -2,14 +2,12 @@ from uuid import UUID, uuid4
 
 from django.test import TestCase
 from django.urls import reverse
-from django.conf import settings
 
 import json
-import pytest
 
-from common.crypto import example_keys
-import common.crypto.ec_secp256k1 as crypto
-from rest_app.models import Group, User
+from rest_app import example_keys
+import groupbank_crypto.ec_secp256k1 as crypto
+from rest_app.models import Group
 
 _, server_key = crypto.load_keys('server_keys.pem')
 

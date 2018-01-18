@@ -1,14 +1,14 @@
 import json
 import logging
-
 from collections import defaultdict
+
 from django.core.exceptions import ObjectDoesNotExist, ValidationError
 from django.db import transaction
 from django.http import HttpResponse, HttpResponseBadRequest, HttpResponseForbidden
 from django.views.decorators.http import require_POST
 
-from common.crypto import ec_secp256k1 as crypto
-from common.decorators import verify_author
+from groupbank_crypto import ec_secp256k1 as crypto
+from rest_app.decorators import verify_author
 from rest_app.models import Group, User, UOMe, UOME_DESCRIPTION_MAX_LENGTH, UserDebt
 from rest_app.utils import simplify_debt
 
